@@ -1,0 +1,210 @@
+// Setup section
+import java_cup.runtime.*;
+import java.io.*;
+
+parser code {:
+    public static int errors_found=0;
+    // Redefinition of error functions
+    /* The report_error function, in this program, is called only when
+       an error, not managed by the error symbol, is found.
+       Indeed, when errors are recognized by the error symbol, the function
+       syntax_error (disabled in this program) is called.
+       This program is an example of error function redefinition: two new
+       functions are developed, pSynError and pSynWarning, used to print
+       syntactical errors and warning, respectively. */
+    public void report_error(String message, Object info) {
+        errors_found++;
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (linea "+line+", colonna "+column+"): "+message);
+            } else System.err.print(": "+message);
+        else System.err.print(": "+message);
+    }
+    public void syntax_error(Symbol cur_token){}
+
+    public Symbol getToken() {
+        return ((Symbol)stack.elementAt(tos));
+    }
+    
+    :};
+    
+// Symbols section
+terminal INT, DOUBLE, ID;
+terminal PRINT, WHILE, IF, ELSE;
+terminal RO, RC, BO, BC, SC, SO, C, S, EQ;
+terminal PLUS, MINUS, STAR, DIV;
+terminal MIN, MAJ, MIN_EQ, MAJ_EQ, EQ_EQ, NOT_EQ;
+terminal LOGICAL_AND, LOGICAL_OR, LOGICAL_NOT, BITWISE_AND, BITWISE_OR, BITWISE_NOT;
+terminal INT_TYPE, DOUBLE_TYPE;
+non terminal Program, Instruction, InstructionList, DeclarationList, Declaration, VariableList, Variable, Type, ArraySubscription, PointlessInstruction;
+non terminal Assignment, Expression, Term, Constant, Sign, SignedInt, SignedDouble;
+non terminal Print, While, If, Condition;
+
+// Operator precedence https://en.cppreference.com/w/c/language/operator_precedence
+precedence right EQ; /* Lowest priority */
+precedence left LOGICAL_OR; 
+precedence left LOGICAL_AND;
+precedence left BITWISE_OR;
+precedence left BITWISE_AND;
+precedence left EQ_EQ, NOT_EQ;
+precedence left MIN, MAJ, MIN_EQ, MAJ_EQ;
+precedence left PLUS, MINUS;
+precedence left STAR, DIV;  
+precedence right LOGICAL_NOT, BITWISE_NOT; /* Highest priority */
+
+start with Program;
+
+// Rules section
+/* Complex version
+Program ::= InstructionList {: System.out.println("Program correctly recognized"); :};
+InstructionList ::= Instruction |
+                    InstructionList Instruction;
+Instruction ::= Declaration | Assignment | Print | While | If | BO InstructionList BC | PointlessInstruction; */
+
+/*Easier version*/
+Program ::= DeclarationList InstructionList{:
+                if(parser.errors_found > 0 ){
+			        System.err.println("ERROR: "+ parser.errors_found +" errors were found in the program");
+			        return null; 
+                }
+		        System.out.println("Program correctly recognized");
+		    :};
+InstructionList ::= Instruction |
+                    InstructionList Instruction |
+                    error Instruction {:
+                        // Error in statement: generic statement error
+                        parser.report_error("Error in a statement\n",parser.getToken());
+                    :};
+Instruction ::= Assignment | Print | While | If |
+                // With this trick a block of code {instructions} can be seen as a single instruction! Simplifies If and While
+                BO InstructionList BC |
+                BO InstructionList error BC {:
+                    // Missing ; before }: missing ';' symbol after a statement
+                    parser.report_error("Missing ; before }\n",parser.getToken());
+                :} |
+                BO error BC {:
+                    // Missing ; before }: missing ';' symbol after a statement
+                    parser.report_error("Missing ; before }\n",parser.getToken());
+                :} |
+                PointlessInstruction |
+                error S {:
+                    // Error in statement: generic statement error
+                    parser.report_error("Error in a statement\n",parser.getToken());
+                :};
+                
+PointlessInstruction ::= Variable S;
+
+// Declarations like char **a[10], b[2];
+DeclarationList ::= /*Empty*/ |
+                    DeclarationList Declaration;
+Declaration ::= Type VariableList S |
+                Type error S {:
+                        // Error in declaration: variable declaration error
+ 			            parser.report_error("Error in a declaration\n",parser.getToken());
+                    :};
+                
+Type ::=    INT_TYPE |
+            DOUBLE_TYPE;
+VariableList ::=    Variable |
+                    VariableList C Variable; //a,b,c;
+Variable ::=    ID |
+                ID ArraySubscription; // a, b[10], c[z], ca[2][3]?
+ArraySubscription ::=   ArraySubscription SO INT SC |
+                        ArraySubscription SO ID SC |
+                        ArraySubscription error ID SC {:
+                            // Error in vector: error accessing a vector, e.g. missing '[' or 
+                            parser.report_error("Error in vector: error accessing a vector: missing '['\n",parser.getToken());
+                        :} |
+                        SO INT SC |
+                        SO ID SC |
+                        SO error SC {:
+                            // wrong symbol or symbols sequence within the square brackets used for vector element access
+                            parser.report_error("Error in vector: wrong symbol or symbols sequence within the square brackets used for vector element access\n",parser.getToken());
+                        :};
+
+// .. | ListPointers Variable (d[10][2]);
+//ListPointer ::= Pointer () | ListPointer Pointer (***);
+
+// Assignments like j = i + 1;
+Assignment ::=  Variable EQ Expression S |
+                error EQ Expression S {:
+                            //Error in assignment: assignment error
+ 			                parser.report_error("Error in an assignment\n",parser.getToken());
+                        :} |
+                Variable EQ error S {:
+                            //Error in expression: mathematical, boolean or comparison expression error
+ 			                parser.report_error("Error in an expression\n",parser.getToken());
+                        :};
+                    
+Expression ::=
+/* ArithmeticOperator */
+                Expression PLUS Expression |
+                Expression MINUS Expression |
+                Expression STAR Expression |
+                Expression DIV Expression |
+                RO Expression RC |
+/* ComparisonOperator */
+                Expression EQ_EQ Expression |
+                Expression NOT_EQ Expression |
+                Expression MIN Expression |
+                Expression MAJ Expression |
+                Expression MIN_EQ Expression |
+                Expression MAJ_EQ Expression |
+/* LogicalOperator */ 
+                Expression LOGICAL_AND Expression |
+                Expression LOGICAL_OR Expression |
+                LOGICAL_NOT Expression |
+/* BitwiseOperator */
+                Expression BITWISE_OR Expression |
+                Expression BITWISE_AND Expression |
+                BITWISE_NOT Expression |
+/* End of Recursion */
+                Term;
+
+Term ::=    Variable |
+            Constant;
+Constant ::=    SignedInt |
+                SignedDouble;
+Sign ::=    PLUS |
+            MINUS;
+SignedInt ::=   Sign INT |
+                INT;
+SignedDouble ::=    Sign DOUBLE |
+                    DOUBLE;
+                    
+// Print instruction
+Print ::=   PRINT Variable S |
+            PRINT error S {:
+                //Error in 'print' instruction: print instruction error
+                parser.report_error("Error in a print\n",parser.getToken());
+            :};
+
+// While instruction
+While ::=   WHILE Condition Instruction;
+//|WHILE Condition BO InstructionList BC; is included in the definition of Instruction since a block of code can be seen as a single instruction
+
+If ::=  IF Condition Instruction |
+        IF Condition Instruction ELSE Instruction |
+        IF Condition Instruction error Instruction {:
+            //Error 'else' expected in 'if' instruction: the keyword else is missing in a if construct
+            parser.report_error("Error 'else' expected in 'if' instruction\n",parser.getToken());
+        :};
+//|IF Condition BO InstructionList BC; is included in the definition of Instruction since a block of code can be seen as a single instruction
+
+// Condition
+Condition ::=   RO Expression RC |
+                RO error RC {:
+                    //Error in expression: mathematical, boolean or comparison expression error
+                    parser.report_error("Error in an if/while expression\n",parser.getToken());
+                :} |
+                error RC{: 
+                    //Error '(' expected in 'if' instruction : if a symbol '(' or ')' misses in a if instruction
+                    parser.report_error("Error '(' expected in 'if/while' instruction\n",parser.getToken());
+                :} |
+                RO error{: 
+                    //Error ')' expected in 'if' instruction: if a symbol '(' or ')' misses in a if instruction
+                    parser.report_error("Error ')' expected in 'if/while' instruction\n",parser.getToken());
+                :};

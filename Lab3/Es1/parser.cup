@@ -1,0 +1,128 @@
+// Setup section
+import java_cup.runtime.*;
+import java.io.*;
+
+parser code {:
+    // Redefinition of error functions
+    public void report_error(String message, Object info) {
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (linea "+line+", colonna "+column+"): ");
+            } else System.err.print(": ");
+        else System.err.print(": ");
+    }
+    :};
+    
+// Symbols section
+terminal INT, DOUBLE, ID;
+terminal PRINT, WHILE, IF, ELSE;
+terminal RO, RC, BO, BC, SC, SO, C, S, EQ;
+terminal PLUS, MINUS, STAR, DIV;
+terminal MIN, MAJ, MIN_EQ, MAJ_EQ, EQ_EQ, NOT_EQ;
+terminal LOGICAL_AND, LOGICAL_OR, LOGICAL_NOT, BITWISE_AND, BITWISE_OR, BITWISE_NOT;
+terminal INT_TYPE, DOUBLE_TYPE;
+non terminal Program, Instruction, InstructionList, DeclarationList, Declaration, VariableList, Variable, Type, ArraySubscription, PointlessInstruction;
+non terminal Assignment, Expression, Term, Constant, Sign, SignedInt, SignedDouble;
+non terminal Print, While, If, Condition;
+
+// Operator precedence https://en.cppreference.com/w/c/language/operator_precedence
+precedence right EQ; /* Lowest priority */
+precedence left LOGICAL_OR; 
+precedence left LOGICAL_AND;
+precedence left BITWISE_OR;
+precedence left BITWISE_AND;
+precedence left EQ_EQ, NOT_EQ;
+precedence left MIN, MAJ, MIN_EQ, MAJ_EQ;
+precedence left PLUS, MINUS;
+precedence left STAR, DIV;  
+precedence right LOGICAL_NOT, BITWISE_NOT; /* Highest priority */
+
+start with Program;
+
+// Rules section
+/* Complex version
+Program ::= InstructionList {: System.out.println("Program correctly recognized"); :};
+InstructionList ::= Instruction |
+                    InstructionList Instruction;
+Instruction ::= Declaration | Assignment | Print | While | If | BO InstructionList BC | PointlessInstruction; */
+
+/*Easier version*/
+Program ::= DeclarationList InstructionList{: System.out.println("Program correctly recognized"); :};
+InstructionList ::= Instruction |
+                    InstructionList Instruction;
+Instruction ::=  Assignment | Print | While | If | BO InstructionList BC | PointlessInstruction;
+// With this trick a block of code {instructions} can be seen as a single instruction! Simplifies If and While
+PointlessInstruction ::= Variable S;
+
+// Declarations like char **a[10], b[2];
+DeclarationList ::= /*Empty*/ |
+                    DeclarationList Declaration;
+Declaration ::= Type VariableList S;
+Type ::=    INT_TYPE |
+            DOUBLE_TYPE;
+VariableList ::=    Variable |
+                    VariableList C Variable; //a,b,c;
+Variable ::=    ID |
+                ID ArraySubscription; // a, b[10], c[z], ca[2][3]?
+ArraySubscription ::= ArraySubscription SO INT SC | ArraySubscription SO ID SC | SO INT SC | SO ID SC;
+
+// .. | ListPointers Variable (d[10][2]);
+//ListPointer ::= Pointer () | ListPointer Pointer (***);
+
+// Assignments like j = i + 1;
+Assignment ::= Variable EQ Expression S ;
+                    
+Expression ::=
+/* ArithmeticOperator */
+                Expression PLUS Expression |
+                Expression MINUS Expression |
+                Expression STAR Expression |
+                Expression DIV Expression |
+                RO Expression RC |
+/* ComparisonOperator */
+                Expression EQ_EQ Expression |
+                Expression NOT_EQ Expression |
+                Expression MIN Expression |
+                Expression MAJ Expression |
+                Expression MIN_EQ Expression |
+                Expression MAJ_EQ Expression |
+/* LogicalOperator */ 
+                Expression LOGICAL_AND Expression |
+                Expression LOGICAL_OR Expression |
+                LOGICAL_NOT Expression |
+/* BitwiseOperator */
+                Expression BITWISE_OR Expression |
+                Expression BITWISE_AND Expression |
+                BITWISE_NOT Expression |
+/* End of Recursion */
+                Term;
+
+Term ::=    Variable |
+            Constant;
+Constant ::=    SignedInt |
+                SignedDouble;
+Sign ::=    PLUS |
+            MINUS;
+SignedInt ::=   Sign INT |
+                INT;
+SignedDouble ::=    Sign DOUBLE |
+                    DOUBLE;
+                    
+// Print instruction
+Print ::=   PRINT Variable S;
+
+// While instruction
+While ::=   WHILE Condition Instruction;
+//|WHILE Condition BO InstructionList BC; is included in the definition of Instruction since a block of code can be seen as a single instruction
+
+If ::=  IF Condition Instruction |
+        IF Condition Instruction ELSE Instruction;
+//|IF Condition BO InstructionList BC; is included in the definition of Instruction since a block of code can be seen as a single instruction
+
+// Condition
+Condition ::= RO Expression RC;
+
+// N.B. Comment at the end breaks working program? Final ; not recognized?

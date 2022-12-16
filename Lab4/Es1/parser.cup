@@ -1,0 +1,111 @@
+// Setup section
+import java_cup.runtime.*;
+import java.io.*;
+
+parser code {:
+    public static int facts=0;
+    public static int error_found=0;
+    // Redefinition of error functions
+    public void report_error(String message, Object info) {
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (linea "+line+", colonna "+column+"): "+message);
+            } else System.err.print(": "+message);
+        else System.err.print(": "+message);
+    }
+    public void syntax_error(Symbol cur_token){}
+
+    public Symbol getToken() {
+        return ((Symbol)stack.elementAt(tos));
+    }
+    
+    :};
+    
+// Symbols section
+terminal INTERROGATION_SYMBOL, RULE_SYMBOL, COMMA, DOT, RO, RC;
+terminal ATOM, VARIABLE;
+non terminal Program, InstructionList, Instruction, Interrogation, Rule, Fact, PredicateList, Predicate, ArgumentList, Argument, Functor;
+
+start with Program;
+
+// Rules section
+/*
+Easy solution that doesn't stop the parsing when the second Interrogation is found, but only at the end.
+
+Program ::= InstructionList {:
+    if(parser.facts==0){
+        System.err.println("ERROR: At least 1 fact must be present!");
+    }
+    else if(parser.interrogations!=1){
+        System.err.println("ERROR: Exactly 1 interrogation must be present!");
+    }
+    else{
+        System.out.println("Program correctly recognized");
+    }
+:};
+
+InstructionList ::= Instruction |
+                    InstructionList Instruction;
+
+Instruction ::= Interrogation | Rule | Fact;
+*/
+
+Program::= InstructionList Interrogation InstructionList {:
+		if(parser.facts == 0){
+			System.err.println("ERROR: At least 1 facts must be present!");
+			return null; 
+        }
+        else if(parser.error_found > 0 ){
+			System.err.println("ERROR: Errors were found in the program");
+			return null; 
+        }
+		System.out.println("Program correctly recognized");
+		
+:};
+
+InstructionList ::= /*Empty*/ |
+                    InstructionList Instruction;
+
+Instruction ::= Fact | Rule;
+
+// An interrogation consists of the symbol ‘?-’ followed by a non-empty list of predicates separated by the character ‘,’ and terminated by the character ‘.’.
+Interrogation ::=   INTERROGATION_SYMBOL PredicateList DOT |
+                    INTERROGATION_SYMBOL error DOT {:
+ 			            parser.report_error("Error in an interrogation\n",parser.getToken());
+			            parser.error_found++;
+                    :};
+
+// A predicate is composed of a Functor followed by a non-empty list of arguments separated by the character ‘,’ terminated by the character ’)’;
+// alternatively a predicate is simply an atom,
+PredicateList ::=   Predicate |
+                    PredicateList COMMA Predicate;
+
+Predicate ::=   Functor ArgumentList RC |
+                ATOM;
+
+ArgumentList ::=    Argument |
+                    ArgumentList COMMA Argument;
+
+//An argument is a predicate or a variable
+Argument ::=    Predicate |
+                VARIABLE; 
+
+// A rule is composed of a predicate followed by the symbol ‘:-’ followed by a non-empty list of predicates separated by the character ‘,’ and terminated by the character ‘.’.
+Rule ::=    Predicate RULE_SYMBOL PredicateList DOT |
+            error RULE_SYMBOL PredicateList DOT {:
+		        parser.report_error("Error in a rule\n",parser.getToken());
+		        parser.error_found++;
+            :};
+
+//A fact consists of a predicate followed by the character ‘.’.
+Fact ::=    Predicate DOT {: parser.facts++; :} |
+            error DOT {:
+                parser.report_error("Error in a fact\n",parser.getToken());
+  	            parser.error_found++;
+  	        :};
+
+//A functor is an atom immediately followed by the character ‘(‘.
+Functor ::= ATOM RO;

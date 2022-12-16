@@ -1,0 +1,29 @@
+public class Env {
+    Hashtable <String, Symbol> table;
+    Env parent;
+    
+    //Create a new symbol table
+    public Env(Env parent){
+        table=new Hashtable<String, Symbol>();
+        this.parent=parent;
+    }
+    
+    //Put a new entry in the current table
+    public boolean put(String key, Symbol sym){
+        if(table.containsKey(key))
+            return false;
+        
+        table.put(key, sym);
+        return true;
+    }
+    
+    //Get an entry for an identifier by searching the chain of tables
+    public Symbol get(String key){
+        for(Env e=this;e!=null;e=e.parent){
+            Symbol found = e.table.get(key);
+            if(found!=null)
+                return found;
+        }
+        return null;
+    }
+}

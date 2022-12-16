@@ -1,0 +1,129 @@
+import java_cup.runtime.*;
+import java.io.InputStreamReader;
+import java.util.HashMap;
+import java.util.Vector;
+import java.util.Iterator;
+   
+
+init with {:
+    type_table = new HashMap<String,te_node>();
+    var_table = new HashMap<String,var_info>();
+    type_table.put ("int", te_node.te_make_base(1));
+    type_table.put ("float", te_node.te_make_base(2));
+    type_table.put ("char", te_node.te_make_base(3));
+    type_table.put ("double", te_node.te_make_base(4));
+:};
+
+parser code {:
+    // Hash table to store types declared in the program
+    public static HashMap<String,te_node> type_table;
+    // Hash table in cui vengono memorizzati i nomi degli identificatori e dei relativi tipi
+    public static HashMap<String,var_info> var_table;
+
+
+    public class var_info{
+    	String name;
+    	te_node type;
+    }
+
+    // Given a type name, return type expression
+    public static te_node type_lookup(String name){
+	te_node rv = (te_node)type_table.get(name);
+	return rv;
+    }
+
+
+    // Add a new entry in the symbol table
+    int add_var(String name,te_node type)
+    {
+	var_info vip = new var_info();
+	System.out.print("var " + name + ":");
+	te_node.te_print(type);
+	System.out.print("\n");
+	
+        vip.name=name;
+	vip.type=type;
+	if ((var_table.put(name,vip))!=null)
+	    return 1;
+	return 0;
+    }
+
+    // Return semantic value of symbol in position (position)
+    public Object stack(int position) {
+        return (((Symbol)stack.elementAt(tos+position)).value);
+    }
+
+
+:};
+
+   
+terminal Integer NUM;
+terminal String ID;
+terminal te_node TYPE;
+
+terminal TIMES, SO, SC, S, CM;
+
+
+non terminal te_node Decll, Decl, T, Vlist, V, Ptr, Ary;
+non terminal te_node NT0;   
+
+start with Decll;
+
+ 
+Decll ::= /* empty */
+          | Decll Decl S
+	  | Decll error S {: parser.report_error("Error in declaration",null); :}
+;
+
+
+Decl ::= T Vlist
+;
+
+//BASE TYPE: int, float, char, double
+T ::= TYPE:a 
+	{: 
+		RESULT=a; 
+	:}
+;
+
+
+NT0 ::={:
+	RESULT=(te_node)parser.stack(-1);
+:};
+
+Vlist ::= V:v {: RESULT=v; :}
+	| Vlist:vl CM NT0 V {: RESULT=vl;	:}
+;
+
+//ARRAYS, POINTERS AND IDENTIFIER
+
+
+V ::=	Ptr ID:i Ary:a 
+	{: 
+				parser.add_var(i,a); 
+				RESULT=(te_node)parser.stack(-3); 
+	:}
+;
+
+
+//POINTERS
+Ptr ::=	/* empty */ 
+	{: 
+		RESULT=(te_node)parser.stack(0);
+	:}
+	| Ptr:p TIMES 
+	{:	
+		RESULT=te_node.te_make_pointer(p); 
+	:}
+;
+
+//ARRAYS
+Ary ::= /* empty */ 
+	{: 
+		RESULT=(te_node)parser.stack(-1);
+	:}
+	| Ary:a SO NUM:n SC 
+	{: 
+		RESULT=te_node.te_make_array(n.intValue(),a); 
+	:}
+;

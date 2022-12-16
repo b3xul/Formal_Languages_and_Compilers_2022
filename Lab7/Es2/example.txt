@@ -1,0 +1,8 @@
+int i;
+char **v[9];
+int m[3][2],*j;
+int k;
+char ***pippo[2][3],a;
+int a;
+char **d, *e[2][3];
+char **f, g[2][3], **h[2][4];

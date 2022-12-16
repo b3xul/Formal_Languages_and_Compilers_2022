@@ -1,0 +1,124 @@
+
+import java_cup.runtime.*;
+import java.io.*;
+   
+parser code {:
+	
+    public static int fact_found  = 0;
+    public static int error_found = 0;
+
+    /* To run the program type: java parser test.txt */
+    public static void main(String argv[]){
+	try {
+        /* Scanner instantiation */
+        scanner l = new scanner(new FileReader(argv[0]));
+        /* Parser instantiation */
+        parser p = new parser(l);
+        /* Run the parser */
+        Object result = p.parse().value;      
+      } catch (NullPointerException e){
+              System.err.println("Syntax error");
+      } catch (FileNotFoundException e){
+              System.err.println("Errore opening file " + argv[0]);
+      } catch (Exception e){
+              e.printStackTrace();
+      }
+    }
+
+  
+    // Redefinition of error functions
+    public void report_error(String message, Object info) {
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (row "+line+", column "+column+"): "+message);
+            } else System.err.print(": "+message);
+        else System.err.print(": "+message);
+    }
+    public void syntax_error(Symbol cur_token){}
+
+    // Return actual symbol
+    /* It returns the object of type Symbol in the top of the parser stack.
+    */
+    public Symbol getToken() {
+        return ((Symbol)stack.elementAt(tos));
+    }
+
+:};
+   
+
+   
+
+terminal SEP1, SEP2, ATOM, VARIABLE, RO, RC, CM, PT;
+non terminal log_prog, elements, element, fact, rule, predicates, predicate, interrogation, arguments, argument, fact_find, interrogation_find, no_find;
+   
+start with log_prog;
+
+
+/*******************************************************/
+/* Solution 1 */
+log_prog::= elements interrogation elements {:
+		if(parser.fact_found == 0 || parser.error_found == 1 )
+			return null; 
+		System.out.println("Program correctly recognized");
+		
+:};
+
+elements ::= | elements element
+;
+
+element ::= fact | rule
+;
+/*******************************************************/
+
+
+
+/*******************************************************/
+/* Solution 2: other possible solution */
+/*
+log_prog ::= log_prog fact | log_prog rule | fact_find interrogation | interrogation_find fact
+;
+
+fact_find ::= fact_find fact | fact_find rule | no_find fact
+;
+
+interrogation_find ::= interrogation_find rule | no_find interrogation
+;
+
+no_find ::= no_find rule | 
+;
+*/
+/*******************************************************/
+
+
+fact ::= predicate PT {:parser.fact_found = 1; :}
+	| error PT {:
+            parser.report_error("Error in a fact\n",parser.getToken());
+  	    parser.error_found = 1;
+:};
+
+rule ::= predicate SEP1 predicates PT
+        | error SEP1 predicates PT {:
+		parser.report_error("Error in a rule\n",parser.getToken());
+		parser.error_found = 1;
+:};
+
+predicates ::= predicates CM predicate | predicate
+;
+
+interrogation ::= SEP2 predicates PT {: System.out.println("Interrogation recognized");	:}
+		| SEP2 error PT {:
+ 			parser.report_error("Error in an interrogation\n",parser.getToken());
+			parser.error_found = 1;
+:};
+
+predicate ::= ATOM RO arguments RC | ATOM 
+;
+
+arguments ::= arguments CM argument | argument 
+;
+
+argument ::= predicate | VARIABLE
+;

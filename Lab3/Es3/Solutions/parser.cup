@@ -1,0 +1,217 @@
+import java_cup.runtime.*;
+
+
+/* TERMINAL SYMBOLS */
+terminal ID, TYPE, SIGN_MODIFIER, LENG_MODIFIER, STORAGE_SPEC, VOID, CONST;
+terminal STRINGCONST, RELOP, LOGOP, ASSOP;
+terminal IF, ELSE, WHILE, SWITCH, CASE, FOR, BREAK, RETURN, DEFAULT;
+terminal PLUS, MINUS, DIVIDE, TIMES, MOD, INCR, DECR, EQUALS;
+terminal RBOPEN, RBCLOSED, SBOPEN, SBCLOSED, CBOPEN, CBCLOSED;
+terminal SEMICOLON, COLON, COMMA;
+
+/* NON TERMINAL SYMBOLS */
+non terminal PROG;
+non terminal  prog_ok, function_prot, function, type, void, decl_list, block;
+non terminal if_stmt, while_stmt, return_stmt, for_stmt, switch_stmt, term, arg_list;
+non terminal arg, comparison, default_stmt, assign_stmt, case_list, case_stmt, cond;
+non terminal const_list, decl, dec_prot, dec_prot_list, expr, expr_list, function_body;
+non terminal function_decl, function_list, ident, id_list, parameter, parameter_list;
+non terminal pointer, stmt, stmt_list, string_const_list, stmts, args;
+
+/* PRECEDENCES:
+associativity: left | right | nonassoc 
+precedence: precedences declared before have high precedence with respect to precedence declared later */
+precedence left LOGOP;
+precedence left PLUS, MINUS;
+precedence left DIVIDE, TIMES, MOD;
+precedence left INCR, DECR;
+
+
+start with PROG;
+
+/* Grammar */
+PROG ::= prog_ok {: System.out.println("Program correctly recognized"); :};
+
+/* This version allow us to simplify the process of translation to assembly because we don't need to manage inner scopes and distinguish variables declarations, while allowing all instructions in all place make that process more difficult */
+prog_ok ::= dec_prot_list function_list
+    	| function_list
+;
+
+dec_prot_list ::= dec_prot_list dec_prot
+    	| dec_prot
+;
+
+dec_prot ::= decl
+    	| function_prot
+;
+
+function_list ::= function | function_list function 
+;
+
+function_decl ::= type pointer RBOPEN parameter_list RBCLOSED
+    	|void ID RBOPEN parameter_list RBCLOSED
+    	|STORAGE_SPEC type pointer RBOPEN parameter_list RBCLOSED
+    	|STORAGE_SPEC void ID RBOPEN parameter_list RBCLOSED
+;
+
+function_prot ::= function_decl SEMICOLON 
+;
+
+function ::= function_decl CBOPEN function_body CBCLOSED
+;
+
+function_body ::= /* empty */
+    	|decl_list stmt_list
+;
+
+parameter_list ::= parameter_list COMMA parameter
+    	| parameter
+    	| void
+;
+
+parameter ::= type pointer
+    	|type pointer SBOPEN SBCLOSED
+;
+
+decl_list ::= decl | decl_list decl
+;
+
+decl ::= type id_list SEMICOLON
+    	| STORAGE_SPEC type id_list SEMICOLON
+;
+
+id_list ::= id_list COMMA ident
+    	|ident
+;
+
+
+ident ::= pointer
+    	|pointer SBOPEN CONST SBCLOSED
+    	|pointer EQUALS CONST
+    	|pointer EQUALS MINUS CONST
+    	|pointer SBOPEN SBCLOSED EQUALS CBOPEN const_list CBCLOSED
+    	|pointer SBOPEN SBCLOSED EQUALS CBOPEN string_const_list CBCLOSED
+;
+
+pointer ::= TIMES pointer
+    	| ID
+;
+
+const_list ::= const_list COMMA CONST
+    	|CONST
+;
+
+string_const_list ::= string_const_list COMMA STRINGCONST
+	|STRINGCONST
+;
+
+void ::= VOID | /*empty */;
+
+type ::= SIGN_MODIFIER TYPE
+    	| LENG_MODIFIER TYPE
+    	| SIGN_MODIFIER LENG_MODIFIER TYPE
+    	| LENG_MODIFIER
+    	| TYPE
+;
+
+stmt_list ::= stmts | /* empty */
+;
+
+stmts ::= stmts stmt
+    	|stmt
+;
+
+block ::= CBOPEN stmt_list CBCLOSED
+;
+
+stmt ::= assign_stmt SEMICOLON
+    	| if_stmt
+    	| while_stmt
+    	| block
+    	| BREAK SEMICOLON
+    	| return_stmt SEMICOLON
+    	| for_stmt
+    	| switch_stmt
+    	| SEMICOLON
+;
+
+assign_stmt ::= ID EQUALS expr
+    	|ID ASSOP expr
+    	| expr
+;
+
+term ::= ID
+    	|CONST
+    	|ID RBOPEN arg_list RBCLOSED
+    	|ID SBOPEN CONST SBCLOSED
+    	|ID SBOPEN ID SBCLOSED
+;
+
+arg_list ::= args | /* empty */
+;
+
+args ::= args COMMA arg
+    	| arg
+;
+
+arg ::= term
+    	| STRINGCONST
+;
+
+expr ::= expr PLUS expr
+    	| expr MINUS expr
+    	| expr DIVIDE expr
+    	| expr TIMES expr
+    	| expr MOD expr
+    	| expr INCR
+    	| INCR expr
+    	| expr DECR
+    	| DECR expr
+    	| RBOPEN expr RBCLOSED
+    	| MINUS expr
+    	| PLUS expr
+    	| term
+;
+
+if_stmt ::= IF RBOPEN cond RBCLOSED stmt ELSE stmt
+    	| IF RBOPEN cond RBCLOSED stmt
+;
+    
+cond ::= cond LOGOP cond
+    	| RBOPEN cond RBCLOSED
+    	| comparison
+    	| expr 
+;
+
+comparison ::= expr RELOP expr
+
+;
+
+while_stmt ::= WHILE RBOPEN cond RBCLOSED stmt 
+;
+
+for_stmt ::= FOR RBOPEN expr_list SEMICOLON cond SEMICOLON expr_list RBCLOSED stmt 
+;
+
+expr_list ::= expr_list COMMA assign_stmt
+    	| assign_stmt
+;
+
+return_stmt ::= RETURN expr
+    	| RETURN
+;
+
+switch_stmt ::= SWITCH RBOPEN ID RBCLOSED CBOPEN case_list CBCLOSED
+    	| SWITCH RBOPEN ID RBCLOSED CBOPEN case_list default_stmt CBCLOSED
+;
+
+case_list ::= case_list case_stmt
+    	| case_stmt
+;
+
+case_stmt ::= CASE CONST COLON stmt_list 
+;
+
+default_stmt ::= DEFAULT COLON stmt_list 
+;
+

@@ -1,0 +1,119 @@
+// Setup section
+import java_cup.runtime.*;
+import java.io.*;
+import java.util.*;
+
+parser code {:
+    public Hashtable<String,Object> symbol_table= new Hashtable<String,Object>();
+
+    public static int errors_found=0;
+    // Redefinition of error functions
+    /* The report_error function, in this program, is called only when
+       an error, not managed by the error symbol, is found.
+       Indeed, when errors are recognized by the error symbol, the function
+       syntax_error (disabled in this program) is called.
+       This program is an example of error function redefinition: two new
+       functions are developed, pSynError and pSynWarning, used to print
+       syntactical errors and warning, respectively. */
+    public void report_error(String message, Object info) {
+        errors_found++;
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (linea "+line+", colonna "+column+"): "+message);
+            } else System.err.print(": "+message);
+        else System.err.print(": "+message);
+    }
+    public void syntax_error(Symbol cur_token){}
+
+    public Symbol getToken() {
+        return ((Symbol)stack.elementAt(tos));
+    }
+    
+    :};
+    
+action code {:
+    class MyPair{
+    public Double first;
+    public Double second;
+    
+    MyPair(Double first, Double second) {
+        this.first = new Double(first);
+        this.second = new Double(second);
+    }
+    
+    }
+:};
+
+// Symbols section
+terminal Double CONST; // So that we automatically get the right type without needing to convert from Object every time
+terminal PLUS, MINUS, DOT, STAR, DIV, CARET, UMINUS, EQ;
+terminal SO, C, SC, S, QUESTION;
+terminal String SCALAR_VARIABLE, VECTOR_VARIABLE;
+non terminal Program, InstructionList, Instruction, Assignment;
+non terminal Double ScalarExpression; // If 
+non terminal MyPair Vector, VectorExpression;
+
+precedence left PLUS, MINUS; /* Lowest priority */
+precedence left DOT;
+precedence left STAR, DIV;
+precedence left CARET;
+precedence left UMINUS; /* Highest priority */
+
+start with Program;
+
+// Rules section
+Program ::= InstructionList QUESTION {:
+                if(parser.errors_found > 0 ){
+			        System.err.println("ERROR: "+ parser.errors_found +" errors were found in the program");
+			        return null; 
+                }
+		        System.out.println("Program correctly recognized");
+		        :};
+		        
+InstructionList ::= InstructionList Instruction | Instruction;
+Instruction ::= ScalarExpression:res S {: 
+                    System.out.println("scalar expression: "+res);
+                :} |
+                VectorExpression:res S {: 
+                    System.out.println("vector expression: ["+res.first+","+res.second+"]");
+                :} |
+                Assignment S;
+
+ScalarExpression ::=
+                /* ArithmeticOperator */
+                ScalarExpression:n1 PLUS ScalarExpression:n2 {: RESULT = n1 + n2; :} |
+                ScalarExpression:n1 MINUS ScalarExpression:n2 {: RESULT = n1 - n2; :} |
+                ScalarExpression:n1 STAR ScalarExpression:n2 {: RESULT = n1 * n2; :} |
+                ScalarExpression:n1 DIV ScalarExpression:n2 {: RESULT = n1 / n2; :} |
+                ScalarExpression:n1 CARET ScalarExpression:n2 {: RESULT = Math.pow( n1,n2 ); :} |
+                MINUS ScalarExpression:n {: RESULT = -n; :} %prec UMINUS |
+                VectorExpression:v1 DOT VectorExpression:v2  {: RESULT = v1.first * v2.first + v1.second * v2.second; :} |
+                /* End of Recursion */
+                SCALAR_VARIABLE:name {: RESULT = (Double) symbol_table.get(name); :} |
+                CONST:n {: RESULT = n; :};
+           
+Vector ::= SO ScalarExpression:first C ScalarExpression:second SC {: RESULT = new MyPair(first,second); :};
+
+VectorExpression ::=
+                /* ArithmeticOperator */
+                VectorExpression:v1 PLUS VectorExpression:v2 {: RESULT = new MyPair(v1.first + v2.first, v1.second + v2.second); :} |
+                VectorExpression:v1 MINUS VectorExpression:v2  {: RESULT = new MyPair(v1.first - v2.first, v1.second - v2.second); :} |
+                ScalarExpression:n1 STAR VectorExpression:v2  {: RESULT = new MyPair(n1 * v2.first, n1 * v2.second); :} |
+                VectorExpression:v1 STAR ScalarExpression:n2  {: RESULT = new MyPair(v1.first * n2, v1.second * n2); :} |
+                ScalarExpression:n1 DIV VectorExpression:v2  {: RESULT = new MyPair(n1 / v2.first, n1 / v2.second); :} |
+                VectorExpression:v1 DIV ScalarExpression:n2  {: RESULT = new MyPair(v1.first / n2, v1.second / n2); :} |
+                /* End of Recursion */
+                VECTOR_VARIABLE:name  {: RESULT = (MyPair) symbol_table.get(name); :}|
+                Vector:pair {: RESULT = pair; :};
+
+Assignment ::=  SCALAR_VARIABLE:name EQ ScalarExpression:res {:
+        symbol_table.put(name,res);
+        System.out.println("assignment: "+res);
+    :} |
+    VECTOR_VARIABLE:name EQ VectorExpression:res {:
+        symbol_table.put(name,res);
+        System.out.println("assignment: ["+res.first+","+res.second+"]");
+    :};

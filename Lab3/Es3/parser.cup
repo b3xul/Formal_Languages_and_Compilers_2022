@@ -1,0 +1,201 @@
+// Setup section
+import java_cup.runtime.*;
+import java.io.*;
+
+parser code {:
+    // Redefinition of error functions
+    public void report_error(String message, Object info) {
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (linea "+line+", colonna "+column+"): ");
+            } else System.err.print(": ");
+        else System.err.print(": ");
+    }
+    :};
+    
+// Symbols section
+terminal AUTO,EXTERN,REGISTER,STATIC;
+terminal CHAR,INT,DOUBLE,STRING,ID;
+terminal PRINT, WHILE, IF, ELSE;
+terminal RO, RC, BO, BC, SC, SO, C, S, EQ;
+terminal PLUS, MINUS, STAR, DIV;
+terminal MIN, MAJ, MIN_EQ, MAJ_EQ, EQ_EQ, NOT_EQ;
+terminal LOGICAL_AND, LOGICAL_OR, LOGICAL_NOT, BITWISE_AND, BITWISE_OR, BITWISE_NOT;
+terminal CHAR_TYPE,SHORT_TYPE,SIGNED_TYPE,INT_TYPE,UNSIGNED_TYPE,LONG_TYPE,FLOAT_TYPE,DOUBLE_TYPE,VOID_TYPE;
+non terminal Char,Short,Int,Long,Double;
+non terminal Program, Instruction, InstructionList, Declaration, VariableList, Variable, Type, ArraySubscription, PointlessInstruction, PointerList;
+non terminal Assignment, AssignmentList, Expression, Term, Constant, Initialization, ArrayInitialization, ConstantList, StorageSpecification;
+non terminal Print, While, If, Condition;
+non terminal Prototype, ArgumentList, Argument, Function;
+
+// Operator precedence https://en.cppreference.com/w/c/language/operator_precedence
+precedence right EQ; /* Lowest priority */
+precedence left LOGICAL_OR; 
+precedence left LOGICAL_AND;
+precedence left BITWISE_OR;
+precedence left BITWISE_AND;
+precedence left EQ_EQ, NOT_EQ;
+precedence left MIN, MAJ, MIN_EQ, MAJ_EQ;
+precedence left PLUS, MINUS;
+precedence left STAR, DIV;
+precedence right LOGICAL_NOT, BITWISE_NOT, PLUS, MINUS; /* Highest priority */
+
+start with Program;
+
+// Rules section
+Program ::= InstructionList {: System.out.println("Program correctly recognized"); :};
+
+/* allowing all instructions in all place make that process more difficult, while the other version (declarations first, then instructions) allow us to simplify the process of translation to assembly because we don't need to manage inner scopes and distinguish variables declarations. N.B. This was only introduced in C99 */
+InstructionList ::= Instruction |
+                    InstructionList Instruction;
+Instruction ::= Declaration | Assignment | Initialization | Prototype| Function| Print | While | If | BO InstructionList BC | PointlessInstruction;
+// With this trick a block of code {instructions} can be seen as a single instruction! Simplifies If and While
+PointlessInstruction ::= Expression S;
+
+    // Function prototype
+    Prototype ::=   Type PointerList RO ArgumentList RC S |
+                    VOID_TYPE PointerList RO ArgumentList RC S |
+                    StorageSpecification Type PointerList RO ArgumentList RC S |
+                    StorageSpecification VOID_TYPE ID PointerList ArgumentList RC S;
+    ArgumentList ::=    /*Empty*/ |
+                        Argument |
+                        ArgumentList C Argument;
+    Argument ::=    Type |
+                    Type PointerList;
+    
+    Function ::=    Type PointerList RO ArgumentList RC BO InstructionList BC |
+                    VOID_TYPE PointerList RO ArgumentList RC BO InstructionList BC |
+                    StorageSpecification Type PointerList RO ArgumentList RC BO InstructionList BC |
+                    StorageSpecification VOID_TYPE PointerList RO ArgumentList RC BO InstructionList BC;
+
+    // Declarations like char **a[10], b[2];
+    Declaration ::= Type VariableList S |
+                    StorageSpecification Type VariableList S;
+    
+        StorageSpecification::= AUTO |
+                                EXTERN |
+                                REGISTER |
+                                STATIC;
+        
+        /* Type */
+        Type ::=    Char |
+                    Short |
+                    SIGNED_TYPE |
+                    Int |
+                    UNSIGNED_TYPE |
+                    Long |
+                    FLOAT_TYPE |
+                    Double;
+                    
+        Char ::=    CHAR_TYPE |
+                    SIGNED_TYPE CHAR_TYPE |
+                    UNSIGNED_TYPE CHAR_TYPE;
+        
+        Short ::=   SHORT_TYPE |
+                    SIGNED_TYPE SHORT_TYPE |
+                    UNSIGNED_TYPE SHORT_TYPE;
+        
+        Int ::= INT_TYPE | 
+                Short INT_TYPE |
+                SIGNED_TYPE INT_TYPE |
+                UNSIGNED_TYPE INT_TYPE |
+                Long INT_TYPE;
+        
+        Long ::=    Long LONG_TYPE|
+                    LONG_TYPE |
+                    SIGNED_TYPE LONG_TYPE |
+                    UNSIGNED_TYPE LONG_TYPE;
+        
+        Double ::=  DOUBLE_TYPE |
+                    LONG_TYPE DOUBLE_TYPE;
+        
+        /* Other good solution
+        type ::= SIGN_MODIFIER TYPE
+    	| LENG_MODIFIER TYPE
+    	| SIGN_MODIFIER LENG_MODIFIER TYPE
+    	| LENG_MODIFIER
+    	| TYPE;
+    	*/
+    	
+        /* VariableList */
+        VariableList ::=    Variable |
+                            VariableList C Variable; //a,b,c;
+        Variable ::=    PointerList |
+                        PointerList ArraySubscription; // a, b[10], c[z], ca[2][3], *d, **e, **f[]
+                        
+        /* Allowing more between SO SC make everything more difficult since we need to create another definition of Expression, without FLOATS */
+        ArraySubscription ::= ArraySubscription SO INT SC | ArraySubscription SO ID SC | SO INT SC | SO ID SC;
+        
+        PointerList ::= ID |
+                        STAR PointerList; //(***)
+    
+    // Initializations like int a[]={2,3,4}, b[]={1,2}, int a[][4]={{2,3,4,5},{1,2,3,4}}; int g[][3][4]={{{2,3,4,5},{1,2,3,4}}};
+    Initialization ::= Type AssignmentList S; 
+    
+    // Assignments like j = i + 1;
+    AssignmentList ::=  Assignment |
+                        AssignmentList C Assignment; //a,b,c;
+    Assignment ::=  Variable EQ Expression|
+                    Variable;
+
+/* Managing [] initialization with also the char []=exception takes a lot of time and additional rules. We use a simplified version for now, where all the array initializations use [INT/ID]={..}
+                    PointerList SO SC EQ BO ExpressionList BC |
+                    PointerList SO SC ArraySubscription; */
+    
+        Expression ::=
+        /* ArithmeticOperator */
+                        Expression PLUS Expression |
+                        Expression MINUS Expression |
+                        Expression STAR Expression |
+                        Expression DIV Expression |
+                        RO Expression RC |
+        /* ComparisonOperator */
+                        Expression EQ_EQ Expression |
+                        Expression NOT_EQ Expression |
+                        Expression MIN Expression |
+                        Expression MAJ Expression |
+                        Expression MIN_EQ Expression |
+                        Expression MAJ_EQ Expression |
+        /* LogicalOperator */ 
+                        Expression LOGICAL_AND Expression |
+                        Expression LOGICAL_OR Expression |
+                        LOGICAL_NOT Expression |
+        /* BitwiseOperator */
+                        Expression BITWISE_OR Expression |
+                        Expression BITWISE_AND Expression |
+                        BITWISE_NOT Expression |
+        /* UnaryOperator */
+                        PLUS Expression |
+                        MINUS Expression |
+        /* End of Recursion */
+                        Term;
+        
+        Term ::=    Variable |
+                    Constant |
+                    ArrayInitialization;
+        Constant ::=    CHAR |
+                        INT |
+                        DOUBLE |
+                        STRING;
+        
+        ArrayInitialization ::= BO ConstantList BC;
+        ConstantList ::=    Constant
+                            ConstantList C Constant;
+    
+    // Print instruction
+    Print ::=   PRINT Variable S;
+    
+    // While instruction
+    While ::=   WHILE Condition Instruction;
+    //|WHILE Condition BO InstructionList BC; is included in the definition of Instruction since a block of code can be seen as a single instruction
+    
+    If ::=  IF Condition Instruction;
+    //|IF Condition BO InstructionList BC; is included in the definition of Instruction since a block of code can be seen as a single instruction
+    
+    // Condition
+    Condition ::= RO Expression RC;
+    
+    

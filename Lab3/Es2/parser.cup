@@ -1,0 +1,69 @@
+// Setup section
+import java_cup.runtime.*;
+import java.io.*;
+
+parser code {:
+    // Redefinition of error functions
+    public void report_error(String message, Object info) {
+        System.err.print("Library formatted incorrectly.\nERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (linea "+line+", colonna "+column+"): ");
+            } else System.err.print(": ");
+        else System.err.print(": ");
+    }
+    :};
+
+// Symbols section
+terminal ARROW, C, S, SECTION_SEPARATOR, COL;
+terminal STRING, ISBN, LI, LS, AV, BO, SO, INT, ALPHA, DATE;
+non terminal Library, WritersBooks, WriterBooks, Writer, Books, Book, Collocation, Genre, Alpha;
+non terminal UsersLoans, UserLoans, User, Loans, Loan;
+
+
+start with Library;
+
+// Rules section
+
+Library ::= WritersBooks SECTION_SEPARATOR UsersLoans {: System.out.println("Library formatted correctly."); :};
+
+// Non-empty list of writers
+WritersBooks ::=    WriterBooks |
+                    WritersBooks WriterBooks;
+
+WriterBooks ::= Writer Books S;
+
+Writer ::= STRING ARROW;
+
+// Non-empty list of books
+Books ::=   Book |
+            Books C Book;
+            
+Book ::=    ISBN COL STRING COL INT COL Collocation;
+            
+//collocation = {origin}{genre}{int}{alpha}?
+Collocation ::= /* Empty collocation */ |
+                LS Genre INT Alpha |
+                LI AV INT Alpha |
+                LI SO INT Alpha;
+// "F. o"-> 88-17-11522-7:"Noi, i ragazzi dello zoo di Berlino999":347:LI BO 1; fails successfully
+Genre ::=   AV |
+            BO |
+            SO;
+            
+Alpha ::=   /* Empty letter */ |
+            ALPHA;
+
+UsersLoans ::=  UserLoans |
+                UsersLoans UserLoans;
+                
+UserLoans ::= User Loans S;
+
+User ::= STRING COL;
+
+Loans ::=   Loan |
+            Loans C Loan;
+            
+Loan ::= DATE ISBN;

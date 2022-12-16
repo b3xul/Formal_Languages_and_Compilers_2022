@@ -1,0 +1,18 @@
+##############################
+Compilation
+##############################
+
+jflex scanner.jflex
+java java_cup.Main -expect 2 parser.cup
+javac *.java
+
+On Linux operating systems:
+make        (Execute the compilation)
+make clean  (Delete all files, with the exception of the source code)
+
+##############################
+Usage
+##############################
+java Main <input_filename> (<output_filename>)?
+
+If <output_filename> is not present, the result of the compilation process is printed on standard output, otherwise the result is saved on file <output_filename>

@@ -1,0 +1,26 @@
+ftp://10.9.9.71/prova.zip
+gopher://255.245.145.900
+http://www.mysite.it/file.html
+http://another.site.com/%7Euser/index.html#rif33
+nntp://news.site.ch:8181/data/
+https://datatracker.ietf.org/doc/html/rfc3986
+https://datatracker.ietf.org/doc/html/rfc3986#section-3.3
+https://Unreservedchars-._~.com
+http://www.google.com
+http://www.miosito.it/file.html
+ftp://100.300.9.71/file.zip
+ftp://100.255.9.71/file.zip
+http://altro.sito.com/%7Eutente/index.html#rif33
+nntp://news.sito.ch:8181/data/
+nntp://news.sito.ch:0/data/
+nntp://news.sito.ch:13452/data/
+nntp://news.sito.ch:65535/data/
+nntp://news.sito.ch:65536/data/
+nntp://news.sito.ch:493874923/data/
+http://ciao.polito.it:10/skenz/
+http://www.polito.it
+http://www.polito.it/pippo.html
+pippo pluto
+pippo
+pluto
+http://.com

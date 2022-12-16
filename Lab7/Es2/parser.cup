@@ -1,0 +1,88 @@
+// Setup section
+import java_cup.runtime.*;
+import java.util.*;
+
+init with {:
+    type_table = new HashMap<String,te_node>();
+    symbol_table = new HashMap<String,te_node>();
+    type_table.put ("int", te_node.te_make_base(1,"INT"));
+    type_table.put ("float", te_node.te_make_base(2,"FLOAT"));
+    type_table.put ("char", te_node.te_make_base(3,"CHAR"));
+    type_table.put ("double", te_node.te_make_base(4,"DOUBLE"));
+:};
+
+parser code {:
+    /* Return semantic value of symbol in position (position) */
+    public Object stack(int position) {
+        return (((Symbol)stack.elementAt(tos+position)).value);
+    }
+    
+    public static HashMap <String, te_node> type_table;
+    
+    // Hash table in cui vengono memorizzati i nomi degli identificatori e dei relativi tipi
+    public static HashMap<String, te_node> symbol_table;
+    
+:};
+
+terminal TIMES, SO, SC, S, CM;
+terminal Integer NUM;
+terminal String ID, TYPE;
+
+non terminal Program, DeclList, Decl, Vlist, V;
+non terminal te_node Type, Ptr, Array, NT0;
+
+/* Ex. float *a[7];
+
+id1=te_make_base(2=FLOAT); -> float
+id2=te_make_pointer( id1 ); -> pointer(float)
+id3=te_make_array(7, id2 ); -> array(7, pointer(float))
+
+id3.left=7
+id3.right=id2
+id2.left=id1
+id2.right=null
+id1.left=null
+id1.left=null
+*/
+start with Program;
+
+Program ::= DeclList {: System.out.println("Program correctly recognized!"); :};
+DeclList ::=   /* empty */ |
+            DeclList Decl S|
+            DeclList error;
+        
+Decl ::= Type Vlist;
+
+Type ::= TYPE:typeName {: RESULT=type_table.get(typeName); /* te_node */ :};
+
+Vlist::=    V:t {: 
+                RESULT=(te_node)t;
+            :} |
+            Vlist:t CM NT0 V {: RESULT = t; :};
+
+/*
+Marker used because V = Ptr Id Array -> Ptr = empty (stack[top]) had the type just before the pointer.
+In this case instead, stack[top] contains the COMMA!
+*/
+NT0 ::= /* empty */ {: RESULT=(te_node)stack(-1); :}; 
+
+V ::=   Ptr ID:name Array:type {:
+            if(symbol_table.get(name)!=null)
+                System.out.println("ERROR: Variable <"+name+"> already initialized");
+            else{
+                symbol_table.put(name,(te_node)type);
+                System.out.println("var "+name+" :"+type);
+            }
+            RESULT=(te_node)stack(-3);
+        :};
+
+Ptr ::= /* empty */ {: RESULT=(te_node)stack(0); /* te_node from Type */
+    /* Marker used because V = Ptr Id Array -> Ptr = empty (stack[top]) had the type just before the pointer.
+        In this case instead, stack[top] contains the COMMA! 
+        char **a, *b[2][3] */
+:} |
+        Ptr:p TIMES {: RESULT=te_node.te_make_pointer(p); /* te_node of Ptr(Type) */ :};
+
+Array ::=   /* empty */ {: RESULT=(te_node)stack(-1); /* te_node taken from Ptr */ :} |
+            Array:base SO NUM:size SC {: RESULT=te_node.te_make_array(size,base); /* te_node of array of size b and type Ptr */ :};
+

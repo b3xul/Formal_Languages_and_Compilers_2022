@@ -1,0 +1,11 @@
+/* Esempio di programma logico */
+/* appartenenza ad una lista */
+member(X,cons(X,_)).
+member(X,cons(_,Y)):-
+member(X,Y).
+/* lista di partenza */
+start_list(cons(a,cons(b,cons(c,nil)))).
+/* interrogazione */
+?- start_list(L), member(X,L), goal(X)).
+/* goal */
+goal(c).

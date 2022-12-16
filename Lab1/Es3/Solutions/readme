@@ -1,0 +1,7 @@
+Compilation process:
+jflex Es3.jflex	   -> It produces the file Yylex.java that is a java file that implements the scanner
+javac Yylex.java   -> It produces the file Yylex.class which contains the bytecode of the scanner
+javac Htmllib.java -> It produces the file Htmllib.class
+javac Main.java    -> It produces the file Es3.class which contains the Main class
+java Es3 example.c -> It uses the scanner on the input file esempio.c
+

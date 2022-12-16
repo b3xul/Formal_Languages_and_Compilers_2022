@@ -1,0 +1,6 @@
+Compilation process:
+jflex BetterSyntaxHighlighterC.jflex	   -> It produces the file BetterSyntaxHighlighterC.java that is a java file that implements the scanner
+javac BetterSyntaxHighlighterC.java   -> It produces the file BetterSyntaxHighlighterC.class which contains the bytecode of the scanner
+javac Htmllib.java -> It produces the file Htmllib.class
+javac Main.java    -> It produces the file Es3.class which contains the Main class
+java BetterSyntaxHighlighterCMain myExample.c -> It uses the scanner on the input file esempio.c

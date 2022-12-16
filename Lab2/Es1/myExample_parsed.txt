@@ -1,0 +1,1 @@
+INT_TYPE ID:prova RO INT_TYPE ID:i RC BO FLOAT ID:ident1f1er S CHAR STAR ID:str EQ "tu" S CHAR STAR ID:str2 EQ "" S IF RO ID:i MIN_EQ INT:1 RC BO ID:printf RO "Albero è:\t int-eramente Bello! %s" C ID:str RC S RETURN INT:1 S BC ELSE RETURN INT:0 S BC 

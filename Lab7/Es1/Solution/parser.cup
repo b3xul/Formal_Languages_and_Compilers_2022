@@ -1,0 +1,459 @@
+/******************************************
+ Mini-C to Pseudo Assembler translator
+
+ Author: Stefano Scanzio (stefano.scanzio@polito.it)
+ Date: June 2011
+
+ ******************************************/
+
+import java_cup.runtime.*;
+import java.io.*;
+import java.util.HashMap;
+
+
+
+
+init with {:
+    /* String buffer used to store the program output */
+    outputBuffer = new StringBuffer();
+
+    /* String buffer used to store errors and warnings */
+    errorBuffer = new StringBuffer();
+:};
+
+
+parser code {:
+    /* Symbol table for type checking */
+    HashMap<String,SymbolType> symbolType_table = new HashMap<String,SymbolType>();
+
+    /* It represents the number of the first usable label */ 
+    public int label = 0;
+
+    /* It can be "stdout" to write output program to standard
+       output or "file" to dump program in a file. */
+    public static String dumpOutput;
+
+    /* It's true if the semantic check is enabled */
+    public boolean enableSem = true;
+
+    /* Number of semantic errors */
+    public int semErrors = 0;
+    /* Number of semantic warnings */
+    public int semWarnings = 0;
+    /* Number of syntactic warnings */
+    public int synWarnings = 0;
+    
+    /* String buffer used to store the output of the program */
+    public StringBuffer outputBuffer;
+
+    /* String buffer used to store program errors */
+    public StringBuffer errorBuffer;
+
+    /* Generation of the next label number */
+    public int genLabel(){
+        label++;
+        return label;
+    };
+
+    /* Redefinition of error functions */
+    public void report_error(String message, Object info) {
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (linea "+line+", colonna "+column+"): ");
+            } else System.err.print(": ");
+        else System.err.print(": ");
+    }
+    public void syntax_error(Symbol cur_token){}
+
+    /* Return actual symbol */
+    public Symbol getToken() {
+        return ((Symbol)stack.elementAt(tos));
+    }
+
+    /* Return semantic value of symbol in position (position) */
+    public Object stack(int position) {
+        return (((Symbol)stack.elementAt(tos+position)).value);
+    }
+
+    /* Return the line number of actual symbol */
+    public int getLine() {
+        if (((Symbol)stack.elementAt(tos)).left != -1){
+            return ((Symbol)stack.elementAt(tos)).left+1;
+        }else return -1;
+    }
+    /* Return the column number of actual symbol */
+    public int getColumn() {
+        if (((Symbol)stack.elementAt(tos)).left != -1){
+            return ((Symbol)stack.elementAt(tos)).right+1;
+        }else return -1;
+    }
+    :};
+
+
+action code {:
+
+    /* Class used to store expression and to do type checking on expressions */
+    class Expr{
+        private String value;
+        private SymbolType type;
+
+        private SymbolType lookupSymbolType(String id){
+            SymbolType type = parser.symbolType_table.get(id);
+            if (type == null){
+                pSemError("Variable \""+id+"\" not declared");
+                return new SymbolType(-1, -1);
+            }
+            return type;
+        }
+        
+        Expr(String value, SymbolType type){
+            this.value = value;
+            this.type = type;
+        }
+        Expr(String id){
+            this.value = id;
+            this.type = lookupSymbolType(id);
+        }
+
+        Expr(String id, Integer pos){
+            this.value = id+"["+pos.toString()+"]";
+            this.type = lookupSymbolType(id);
+
+            int dim = type.getDim();
+            if (pos>=dim && dim!=-1){
+                pSemError("Array index ("+pos+") exceed array size ("+dim+")");
+            }
+        }
+        Expr(String id, String pos){
+            this.value = id+"["+pos+"]";
+            this.type = lookupSymbolType(id);
+
+        }
+
+
+        public String toString(){
+            return value;
+        }
+        public SymbolType getSymbolType(){
+            return type;
+        }
+
+        /* Check symbol type. In return unknown type in the case of type error */
+        public SymbolType checkSymbolType(Expr expr){
+            int type1 = type.getType();
+            int type2 = expr.getSymbolType().getType();
+
+            if (type1==type2){
+                return type;
+            }else if(type1!=-1 && type2!=-1){
+                /* If operands are of two different types cast them to double */
+                pSemWarning("Operation between int and double, int number casted to double");
+                return new SymbolType(1, 1);
+            }else{
+                return new SymbolType(-1, -1);
+            }
+        }
+        public void checkSymbolTypeAssignment(Expr expr){
+            int type1 = type.getType();
+            int type2 = expr.getSymbolType().getType();
+
+            if (type1==0 && type2==1){
+                pSemWarning("Assignment of a double value to an int variable");
+            } else if (type1==1 && type2==0){
+                pSemWarning("Assignment of an int value to an double variable");
+            }
+        }
+    }
+
+
+
+    /* Disable semantic check */
+    private void disableSem(){
+        parser.enableSem = false;
+    }
+    /* Return true if semantic is enabled, false otherwise */
+    private boolean sem(){
+        return parser.enableSem;
+    }
+
+    /* Error management */
+    private void pSemError(String message){
+        parser.errorBuffer.append("SEM ERROR: line: "+parser.getLine()+" col: "+parser.getColumn()+": "+message+"\n");
+        parser.semErrors++;
+    }
+    private void pSemWarning(String message){
+        parser.errorBuffer.append("SEM WARNING: line: "+parser.getLine()+" col: "+parser.getColumn()+": "+message+"\n");
+        parser.semWarnings++;
+    }
+    private void pSynError(String message){
+        System.err.println("SYN ERROR: line: "+parser.getLine()+" col: "+parser.getColumn()+": "+message);
+        System.err.println("Could not continue parsing");
+        parser.done_parsing();
+    }
+    private void pSynWarning(String message){
+        parser.errorBuffer.append("SYN WARNING: line: "+parser.getLine()+" col: "+parser.getColumn()+": "+message+"\n");
+        parser.synWarnings++;
+        /* When there is a syntactic warning semantic is disable to avoid errors due to invalid data structures */
+        disableSem();
+    }
+        
+    /* Functions to dump program output */
+    private void dump(String s){
+            parser.outputBuffer.append(s);
+    }
+    private void dumpln(String s){
+            parser.outputBuffer.append(s+"\n");
+    }
+
+    :}
+
+
+// Terminal tokens
+terminal Integer INT;
+terminal Double DOUBLE;
+
+terminal PRINT, IF, WHILE,  THEN, ELSE;
+terminal String ID;
+terminal RO, RC, BO, BC, S, CM, SO, SC;
+terminal PLUS, MINUS, STAR, DIV;
+terminal MIN, MAJ, MIN_EQ, EQ_MIN, MAJ_EQ, EQ_MAJ, EQ;
+terminal AND, OR, NOT;
+terminal INT_TYPE, DOUBLE_TYPE;
+terminal UMINUS;
+
+
+// Non terminal tokens
+non terminal prog, stmt_list, stmt, if, while, assignment, print;
+non terminal Integer[] nt0_while;
+non terminal Integer nt0_if, nt1_if;
+non terminal Expr exp;
+non terminal mineq, majeq;
+
+non terminal decl_list, decl, var_list, var;
+non terminal String type, array;
+non terminal String if_condition, while_condition;
+non terminal Expr id;
+
+// Precedences and associativities
+// lower precedences
+precedence left OR;
+precedence left AND;
+precedence left NOT;
+precedence left MIN, MAJ, MIN_EQ, EQ_MIN, MAJ_EQ, EQ_MAJ, EQ;
+precedence left PLUS, MINUS;
+precedence left STAR, DIV;
+precedence left UMINUS;
+// higher precedences
+
+
+//////////////////////////////////////
+// Grammar start
+//////////////////////////////////////
+
+start with prog;
+
+
+prog ::= decl_list stmt_list {:
+                              if(sem() && parser.semErrors==0) {
+                                  dumpln("\tEND");
+                                  if (parser.dumpOutput=="stdout"){
+                                      System.out.println(parser.outputBuffer);
+                                  }else{
+                                      try {
+                                          BufferedWriter out = new BufferedWriter(new FileWriter(parser.dumpOutput));
+                                          String outText = parser.outputBuffer.toString();
+                                          out.write(outText);
+                                          out.close();
+                                      }
+                                      catch (IOException e)
+                                          {
+                                              e.printStackTrace();
+                                          }
+                                  }
+                              }else{
+                                  System.err.println("\nOUTPUT COULD NOT BE PRODUCED DUE TO ERRORS\n");
+                              }
+                              System.err.println(parser.errorBuffer);
+
+                              System.err.println("######################");
+                              System.err.println("Syntactic Errors : "+parser.synWarnings);
+                              System.err.println("Semantic Errors  : "+parser.semErrors);
+                              System.err.println("Semantic Warnings: "+parser.semWarnings);
+
+                              :}
+    ;
+
+
+//////////////////////////////////////
+// Declarations
+//////////////////////////////////////
+
+decl_list ::= decl_list decl | ;
+
+decl ::= type var_list S
+    | type error S {: pSynWarning("Error in declaration"); :};
+
+type ::= INT_TYPE {: if(sem()){RESULT = new String("INT");} :}
+    | DOUBLE_TYPE {: if(sem()){RESULT = new String("DOUBLE");}
+    :};
+
+var_list ::= var 
+    | var_list CM {: if(sem()){RESULT = parser.stack(-2);} :} var;
+
+var ::= ID:x {: if(sem()){
+        dumpln("\t"+parser.stack(-1)+" "+x);
+        if(parser.stack(-1).equals("INT")){
+            parser.symbolType_table.put(x, new SymbolType(0,1));
+        }else if (parser.stack(-1).equals("DOUBLE")){
+            parser.symbolType_table.put(x, new SymbolType(1,1));
+        }
+    }
+              :}
+    | ID:x SO INT:y SC {: if(sem()){
+        dumpln("\t"+parser.stack(-4)+" "+x+"["+y.toString()+"]"); 
+        if(parser.stack(-4).equals("INT")){
+            parser.symbolType_table.put(x, new SymbolType(0,y));
+        }else if (parser.stack(-4).equals("DOUBLE")){
+            parser.symbolType_table.put(x, new SymbolType(1,y));
+        }
+    }
+    :};
+       
+
+
+
+//////////////////////////////////////
+// Instructions
+//////////////////////////////////////
+
+stmt_list ::= stmt_list stmt | stmt 
+    | error stmt {: pSynWarning("Error in statement"); :};
+
+
+stmt ::= if | while | assignment | print | BO stmt_list BC
+    | BO stmt_list error BC {: pSynWarning("Missing ; before }"); :}
+    | BO error BC {: pSynWarning("Missing ; before }"); :}
+    | error S {: pSynWarning("Error in statement"); :}
+;   
+
+// Assignment instruction
+assignment ::= id:x S {: if (sem()){ dumpln("\t"+x);} :}
+    | id:x EQ exp:y S {: if (sem()){
+        x.checkSymbolTypeAssignment(y); 
+        dumpln("\tEVAL "+y+"\n\tASS "+x);
+    }
+    :}
+    | id EQ error S {: pSynWarning("Error in expression"); :}
+    | error EQ exp S {: pSynWarning("Error in assigment"); :}
+;
+
+
+// PRINT instruction
+print ::= PRINT id:x S {: if (sem()){ dumpln("\tPRINT "+x);} :}
+    | PRINT error S {: pSynWarning("Error in 'print' instruction"); :}
+;
+
+
+// IF instruction
+if ::= IF if_condition nt0_if stmt ELSE nt1_if stmt {:
+                                                     if (sem()){  
+                                                         dump("L"+parser.stack(-1)+":");
+                                                     }
+                                                     :}
+     | IF if_condition:e nt0_if stmt {: if (sem()){ dump("L"+parser.stack(-1)+":");} :}
+     | IF if_condition:e nt0_if stmt error nt1_if stmt {: pSynWarning("Error 'else' expected in 'if' instruction"); :}
+
+;
+
+if_condition ::= RO exp:e RC {: if(sem()){RESULT=e.value;} :}
+    | RO error RC {: pSynWarning("Error in 'if' condition"); :}
+    | error exp RC {: pSynWarning("Error '(' expected in 'if' instruciton"); :}
+    | RO exp error  {: pSynWarning("Error ')' expected in 'if' instruciton"); :}
+;
+
+nt0_if ::= {: 
+            if (sem()){ 
+                RESULT=parser.genLabel();
+                dumpln("\tEVAL "+parser.stack(0)+"\t\t/* if (line "+parser.getLine()+") */\n\tGOTOF L"+RESULT);
+            }
+            :}
+;
+
+nt1_if ::= {: 
+            if (sem()){ 
+                RESULT=parser.genLabel();
+                dumpln("\tGOTO L"+RESULT);
+                dump("L"+parser.stack(-2)+":");
+            }
+            :}
+;
+
+
+// WHILE instruction
+while ::= WHILE while_condition nt0_while stmt {: 
+                                          if (sem()){ 
+                                              Integer[] l=(Integer[])parser.stack(-1);
+                                              dumpln("\tGOTO L"+l[0]);
+                                              dump("L"+l[1]+":");
+                                          }
+                                          :};
+while_condition ::= RO exp:e RC {: if(sem()){RESULT=e.value;} :}
+    | RO error RC {: pSynWarning("Error in 'while' condition"); :}
+    | error exp RC {: pSynWarning("Error '(' expected in 'while' instruciton"); :}
+    | RO exp error  {: pSynWarning("Error ')' expected in 'while' instruciton"); :}
+;
+
+
+
+nt0_while ::= {:
+                   if (sem()){ 
+                       RESULT=new Integer[2];
+                       RESULT[0]=(Integer)parser.genLabel();
+                       RESULT[1]=(Integer)parser.genLabel();
+                       dumpln("L"+RESULT[0]+":\tEVAL "+parser.stack(0)+"\t\t/* while (line "+parser.getLine()+") */\n\tGOTOF L"+RESULT[1]);
+                   }
+              :}
+;
+
+
+// Expressions
+exp ::= 
+    /* Espressioni logiche */
+    exp:x AND exp:y  {: if(sem()){RESULT = new Expr(x+" "+y+" & ", x.checkSymbolType(y));} :}
+    | exp:x OR exp:y {: if(sem()){RESULT = new Expr(x+" "+y+" | ", x.checkSymbolType(y));} :}
+    | NOT exp:x      {: if(sem()){RESULT = new Expr(x+" ! ", x.getSymbolType());} :}
+
+    /* Espressioni di confronto */
+    | exp:x EQ EQ exp:y {: if(sem()){RESULT = new Expr(x+" "+y+" == ", x.checkSymbolType(y));} :}
+    | exp:x MIN exp:y   {: if(sem()){RESULT = new Expr(x+" "+y+" < ", x.checkSymbolType(y));} :}
+    | exp:x MAJ exp:y   {: if(sem()){RESULT = new Expr(x+" "+y+" > ", x.checkSymbolType(y));} :}
+    | exp:x mineq exp:y {: if(sem()){RESULT = new Expr(x+" "+y+" <= ", x.checkSymbolType(y));} :}
+    | exp:x majeq exp:y {: if(sem()){RESULT = new Expr(x+" "+y+" >= ", x.checkSymbolType(y));} :}
+
+    /* Espressioni aritmetiche */
+    | exp:x PLUS exp:y {: if(sem()){RESULT = new Expr(x+" "+y+" + ", x.checkSymbolType(y));} :}
+    | exp:x MINUS exp:y {: if(sem()){RESULT = new Expr(x+" "+y+" - ", x.checkSymbolType(y));} :}
+    | exp:x STAR exp:y {: if(sem()){RESULT = new Expr(x+" "+y+" * ", x.checkSymbolType(y));} :}
+    | exp:x DIV exp:y {: if(sem()){RESULT = new Expr(x+" "+y+" / ", x.checkSymbolType(y));} :}
+    | RO exp:x RC {: if(sem()){RESULT=x;} :}
+    | id:x {: if(sem()){RESULT=x;} :}
+    | INT:x {: if(sem()){RESULT = new Expr(x.toString(), new SymbolType(0,1));} :}
+    | DOUBLE:x {: if(sem()){RESULT = new Expr(x.toString(), new SymbolType(1,1));} :} 
+    | MINUS INT:x {: if(sem()){RESULT = new Expr("-"+x.toString(), new SymbolType(0,1));} :} %prec UMINUS
+    | MINUS DOUBLE:x {: if(sem()){RESULT = new Expr("-"+x.toString(), new SymbolType(1,1));} :} %prec UMINUS
+    | RO error RC {: pSynWarning("Error in expression"); :}
+;
+
+
+mineq ::= MIN_EQ | EQ_MIN;
+majeq ::= MAJ_EQ | EQ_MAJ;
+
+
+id ::= ID:x {: if(sem()){RESULT = new Expr(x);} :}
+      | ID:x SO INT:y SC {: if(sem()){RESULT = new Expr(x, y);} :}
+      | ID:x SO ID:y SC {: if(sem()){RESULT = new Expr(x, y);} :}
+      | error SC {: pSynWarning("Error in vector"); :}
+;
